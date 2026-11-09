@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Love Trails</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,700;1,800&family=Syne:wght@500;800&display=swap" rel="stylesheet">
+<style>
+  :root{ --wine:#1a0610; --rose:#ff4d79; --red:#ff2d55; --muted:#e0a9bb; --white:#fff; }
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--wine);color:var(--white);font-family:'Syne',sans-serif;line-height:1.6}
+
+  /* ---------- HERO: romantic-movie background ---------- */
+  .hero{position:relative;height:100svh;min-height:520px;overflow:hidden;
+    background:
+      radial-gradient(ellipse at 50% 45%, rgba(190,30,75,.55), transparent 62%),
+      radial-gradient(circle at 12% 88%, rgba(255,120,150,.28), transparent 42%),
+      radial-gradient(circle at 88% 12%, rgba(255,170,120,.22), transparent 38%),
+      linear-gradient(160deg,#2e0a1e 0%,#4d0f2b 45%,#1a0610 100%)}
+  .hero::after{content:"";position:absolute;inset:0;pointer-events:none;           /* cinematic vignette */
+    background:radial-gradient(ellipse at center, transparent 45%, rgba(10,2,6,.75) 100%)}
+  .bokeh{position:absolute;border-radius:50%;filter:blur(6px);opacity:0;pointer-events:none;
+         animation:drift var(--d) ease-in-out var(--delay) infinite alternate}
+  @keyframes drift{
+    0%{opacity:0;transform:translate(0,0) scale(.9)}
+    40%{opacity:var(--o)}
+    100%{opacity:calc(var(--o)*.4);transform:translate(var(--dx),var(--dy)) scale(1.15)}}
+
+  canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
+  #trails{transition:opacity 1.2s ease}
+  #trails.out{opacity:0}
+  #heart.beat{animation:beat 1.1s ease-in-out infinite;transform-origin:center}
+  @keyframes beat{0%,100%{transform:scale(1)}15%{transform:scale(1.04)}30%{transform:scale(1)}45%{transform:scale(1.025)}}
+
+  /* ---------- Title: white text, red glowing border ---------- */
+  .title{position:absolute;left:50%;top:50%;z-index:3;transform:translate(-50%,-50%) scale(.2);opacity:0;
+    width:min(70vw,520px);text-align:center;pointer-events:none;
+    font-family:'Playfair Display',serif;font-style:italic;font-weight:800;line-height:1.1;letter-spacing:.03em;
+    font-size:clamp(1.3rem,5.5vw,3rem);
+    color:#fff;-webkit-text-stroke:1.4px var(--red);paint-order:stroke fill;
+    text-shadow:0 0 10px rgba(255,45,85,.95),0 0 28px rgba(255,45,85,.65),0 0 60px rgba(200,20,60,.55)}
+  .title::after{content:"";display:block;height:2px;width:60%;margin:.5em auto 0;border-radius:2px;
+    background:linear-gradient(90deg,transparent,var(--red),#fff,var(--rose),transparent);
+    box-shadow:0 0 12px rgba(255,45,85,.9)}
+  .title.pop{animation:pop .9s cubic-bezier(.2,1.4,.4,1) forwards}
+  @keyframes pop{
+    0%{opacity:0;transform:translate(-50%,-50%) scale(.2)}
+    60%{opacity:1;transform:translate(-50%,-50%) scale(1.15)}
+    100%{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+
+  /* ---------- Content ---------- */
+  main{max-width:960px;margin:0 auto;padding:6rem 1.5rem}
+  h2{font-family:'Playfair Display',serif;font-style:italic;font-size:clamp(1.8rem,4vw,2.6rem);margin-bottom:1rem}
+  p{max-width:60ch;color:var(--muted)}
+  section{margin-bottom:6rem}
+  .grid{display:grid;gap:1.5rem;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-top:2rem}
+  .disc{aspect-ratio:1;border-radius:50%;display:grid;place-items:center;
+        background:conic-gradient(from 200deg,#3a0d22,#ff4d79,#8a1038,#ffb3c6,#3a0d22);box-shadow:0 0 30px rgba(255,45,85,.25)}
+  .disc::after{content:"";width:22%;aspect-ratio:1;border-radius:50%;background:var(--wine);border:1px solid rgba(255,255,255,.4)}
+  .item h3{margin-top:1rem;font-size:1.1rem}
+  .item small{color:var(--muted)}
+  form{display:flex;gap:.75rem;flex-wrap:wrap;margin-top:1.5rem}
+  input{flex:1 1 220px;padding:.9rem 1rem;border-radius:999px;border:1px solid rgba(255,120,150,.5);background:transparent;color:#fff;font:inherit}
+  button{padding:.9rem 1.6rem;border-radius:999px;border:0;background:linear-gradient(90deg,#ff2d55,#ff6b93);color:#fff;font:inherit;font-weight:800;cursor:pointer;box-shadow:0 0 18px rgba(255,45,85,.45)}
+  :focus-visible{outline:2px solid #fff;outline-offset:3px}
+  footer{text-align:center;color:var(--muted);padding:3rem 1rem;font-size:.85rem}
+  @media (prefers-reduced-motion:reduce){#heart.beat{animation:none}.bokeh{animation:none;opacity:.25}.title.pop{animation-duration:.01s}}
+</style>
+</head>
+<body>
+
+<header class="hero" id="hero">
+  <canvas id="trails"></canvas>
+  <canvas id="heart"></canvas>
+  <canvas id="fx"></canvas>
+  <h1 class="title" id="title">LOVE YOURSELF</h1>
+</header>
+
+
+<script>
+/* ============ Settings (milliseconds) ============ */
+const T_TRAIL = 6000;   // trail travels left -> right during this time, then fades
+const T_HEART = 6200;   // heart starts drawing
+const T_TOTAL = 9000;   // title pops out at exactly 9s
+const DT = 1000/60;
+
+const $ = id => document.getElementById(id);
+const trails=$('trails'), heart=$('heart'), fx=$('fx'), title=$('title'), hero=$('hero');
+const tctx=trails.getContext('2d'), hctx=heart.getContext('2d'), fctx=fx.getContext('2d');
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let W,H,dpr;
+
+function resize(){
+  dpr=Math.min(devicePixelRatio||1,2); W=hero.clientWidth; H=hero.clientHeight;
+  for(const c of [trails,heart,fx]){c.width=W*dpr;c.height=H*dpr;c.getContext('2d').setTransform(dpr,0,0,dpr,0,0)}
+  const s=heartSize(); title.style.width=s*.62+'px'; title.style.fontSize=Math.max(16,Math.min(44,s*.085))+'px';
+}
+const heartSize=()=>Math.min(W*.8,H*.55);
+addEventListener('resize',resize); resize();
+
+/* ============ Soft bokeh lights (movie feel) ============ */
+const bokehColors=['255,90,130','255,150,170','255,190,140','230,60,100'];
+for(let i=0;i<16;i++){
+  const b=document.createElement('div'), s=30+Math.random()*90, c=bokehColors[i%4];
+  b.className='bokeh';
+  b.style.cssText=`width:${s}px;height:${s}px;left:${Math.random()*100}%;top:${Math.random()*100}%;
+    background:radial-gradient(circle,rgba(${c},.55),rgba(${c},0) 70%);
+    --o:${.35+Math.random()*.4};--dx:${(Math.random()-.5)*80}px;--dy:${(Math.random()-.5)*80}px;
+    --d:${5+Math.random()*6}s;--delay:${-Math.random()*8}s`;
+  hero.insertBefore(b,trails);
+}
+
+/* ============ Drawing helpers ============ */
+function line(ctx,x1,y1,x2,y2,color,w,glow){
+  ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle=color;ctx.lineWidth=w;
+  ctx.shadowColor=glow||'transparent';ctx.shadowBlur=glow?14:0;
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+}
+function heartPath(ctx,x,y,s){           // small heart centered on x,y
+  y-=s*.45;
+  ctx.beginPath();ctx.moveTo(x,y+s/4);
+  ctx.bezierCurveTo(x,y,x-s/2,y,x-s/2,y+s/4);
+  ctx.bezierCurveTo(x-s/2,y+s/2,x,y+s*.7,x,y+s*.9);
+  ctx.bezierCurveTo(x,y+s*.7,x+s/2,y+s/2,x+s/2,y+s/4);
+  ctx.bezierCurveTo(x+s/2,y,x,y,x,y+s/4);ctx.closePath();
+}
+
+/* ============ Particles: sparkles, floating hearts, burst, ring ============ */
+const parts=[];
+function emit(p){ if(parts.length<260) parts.push(Object.assign({life:0,rot:0,spin:0,vx:0,vy:0,a:1},p)); }
+function sparkle(x,y,color){ emit({type:'dot',x,y,vx:(Math.random()-.5)*40,vy:(Math.random()-.5)*40-10,max:.5+Math.random()*.6,size:1+Math.random()*2.2,color}); }
+function loveHeart(x,y,color){ emit({type:'heart',x,y,vx:(Math.random()-.5)*30,vy:-20-Math.random()*40,max:1.6+Math.random()*1.2,size:8+Math.random()*8,color,spin:(Math.random()-.5)}); }
+function ambient(){ emit({type:'heart',amb:1,x:Math.random()*W,y:H+20,vx:0,vy:-(18+Math.random()*30),max:9,size:8+Math.random()*14,color:'255,120,150',a:.3,spin:Math.random()*6}); }
+function burst(){
+  for(let i=0;i<44;i++){const ang=Math.random()*Math.PI*2,sp=90+Math.random()*260;
+    emit({type:'heart',x:W/2,y:H/2,vx:Math.cos(ang)*sp,vy:Math.sin(ang)*sp-40,max:1.6+Math.random()*1.4,size:8+Math.random()*14,
+      color:['255,45,85','255,120,150','255,255,255'][i%3],spin:(Math.random()-.5)*2});}
+  emit({type:'ring',x:W/2,y:H/2,max:1.4,size:0,color:'255,255,255'});
+}
+function drawParts(dt){
+  fctx.clearRect(0,0,W,H);
+  for(let i=parts.length-1;i>=0;i--){
+    const p=parts[i]; p.life+=dt; if(p.life>=p.max){parts.splice(i,1);continue}
+    const k=p.life/p.max;
+    if(p.amb){p.x+=Math.sin(p.life*1.2+p.spin)*14*dt;} else {p.vx*=.985;p.vy*=.985;}
+    p.x+=p.vx*dt;p.y+=p.vy*dt;
+    const alpha=(p.amb?Math.min(1,k*8)*(1-k):(1-k))*p.a;
+    fctx.globalAlpha=Math.max(0,alpha);fctx.shadowColor=`rgba(${p.color},.9)`;fctx.shadowBlur=10;
+    fctx.fillStyle=`rgb(${p.color})`;fctx.strokeStyle=`rgb(${p.color})`;
+    if(p.type==='dot'){const tw=.6+.4*Math.sin(p.life*30);fctx.beginPath();fctx.arc(p.x,p.y,p.size*tw,0,7);fctx.fill();}
+    else if(p.type==='heart'){heartPath(fctx,p.x,p.y,p.size*(1+.15*Math.sin(p.life*6)));fctx.fill();}
+    else if(p.type==='ring'){fctx.lineWidth=2.5*(1-k);fctx.beginPath();fctx.arc(p.x,p.y,k*Math.max(W,H)*.5,0,7);fctx.stroke();}
+  }
+  fctx.globalAlpha=1;fctx.shadowBlur=0;
+}
+
+/* ============ Phase 1: pink/red trail, always travelling LEFT -> RIGHT ============ */
+// path = a guide that glides steadily from the left edge to the right edge
+//        + a circling offset that makes loops and swirls (random size and speed)
+// the circling speeds up on every "lub-dub" so the line beats like a heartbeat
+const BEAT_MS=900;
+const beat=t=>{const p=(t%BEAT_MS)/BEAT_MS;return Math.exp(-(((p-.08)/.05)**2))+.6*Math.exp(-(((p-.28)/.06)**2))};
+const pen={t:0,phase:0,omega:.1,omegaT:.1,R:60,RT:60,px:null,py:null};
+const SUB=4;
+function penStep(){
+  for(let i=0;i<SUB;i++){
+    pen.t+=DT/SUB;
+    if(Math.random()<.004){pen.omegaT=(Math.random()<.3?-1:1)*(.06+Math.random()*.1);}
+    if(Math.random()<.004){pen.RT=Math.min(W,H)*(.05+Math.random()*.13);}
+    pen.omega+=(pen.omegaT-pen.omega)*.01; pen.R+=(pen.RT-pen.R)*.01;
+    const b=beat(pen.t);
+    pen.phase+=pen.omega*(.4+2.2*b)/SUB;
+    const g=pen.t/T_TRAIL;
+    const gx=-.05*W+g*1.1*W;                                   // always moves left -> right
+    const gy=H*.48+Math.sin(pen.t/1300)*H*.16+Math.sin(pen.t/470)*H*.04;
+    const x=gx+pen.R*Math.cos(pen.phase), y=gy+pen.R*Math.sin(pen.phase);
+    if(pen.px!==null){
+      const hue=345+15*Math.sin(pen.t/400), l=62+12*Math.sin(pen.t/230+1)+10*b;      // pink <-> red
+      line(tctx,pen.px,pen.py,x,y,`hsl(${hue},100%,${l}%)`,2.6,`hsla(${hue},100%,60%,.95)`);
+      line(tctx,pen.px,pen.py,x,y,`hsl(${hue},100%,90%)`,1);                          // bright core
+      if(Math.random()<.25) sparkle(x,y,`255,${130+Math.random()*100|0},${160+Math.random()*60|0}`);
+      if(Math.random()<.015) loveHeart(x,y,'255,90,130');
+    }
+    pen.px=x;pen.py=y;
+  }
+  tctx.save();tctx.globalCompositeOperation='destination-out';tctx.fillStyle='rgba(0,0,0,.02)';tctx.fillRect(0,0,W,H);tctx.restore();
+}
+
+/* ============ Phase 2: white heart draws itself ============ */
+function heartPoint(u,size){
+  const x=16*Math.sin(u)**3, y=13*Math.cos(u)-5*Math.cos(2*u)-2*Math.cos(3*u)-Math.cos(4*u), k=size/34;
+  return [W/2+x*k, H/2-(y+2.5)*k];
+}
+let drawn=0,lastPt=null;
+function drawHeartTo(progress){
+  const size=heartSize(),steps=400,target=Math.floor(progress*steps);
+  while(drawn<target){
+    drawn++;const p=heartPoint(drawn/steps*Math.PI*2,size);
+    if(!lastPt)lastPt=heartPoint(0,size);
+    line(hctx,lastPt[0],lastPt[1],p[0],p[1],'#fff',2.8,'rgba(255,255,255,.95)');
+    if(!reduce&&Math.random()<.35)sparkle(p[0],p[1],'255,255,255');
+    lastPt=p;
+  }
+}
+
+/* ============ Main loop (real clock, so 9s is 9s) ============ */
+let start=null,prev=0,acc=0,trailOut=false,finished=false;
+function finish(){
+  if(finished)return;finished=true;
+  trails.classList.add('out');drawHeartTo(1);
+  heart.classList.add('beat');title.classList.add('pop');
+  if(!reduce)burst();
+}
+function frame(now){
+  if(start===null){start=now;prev=now}
+  const t=now-start,dt=Math.min(.05,(now-prev)/1000);prev=now;acc+=dt*1000;
+  while(acc>=DT){acc-=DT;if(pen.t<T_TRAIL)penStep();}
+  if(t>=T_TRAIL&&!trailOut){trailOut=true;trails.classList.add('out')}
+  if(t>=T_HEART&&t<T_TOTAL)drawHeartTo(Math.min(1,(t-T_HEART)/(T_TOTAL-T_HEART-200)));
+  if(t>=T_TOTAL)finish();
+  if(Math.random()<.05)ambient();                 // soft hearts floating up the whole time
+  drawParts(dt);
+  requestAnimationFrame(frame);
+}
+
+if(reduce){drawHeartTo(1);trails.style.display='none';finish();}
+else document.fonts.ready.then(()=>requestAnimationFrame(frame));
+</script>
+</body>
+</html>
